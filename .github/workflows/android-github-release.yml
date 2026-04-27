@@ -1,0 +1,131 @@
+name: Android APK GitHub Release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "android-v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag, for example v1.0.0
+        required: true
+        type: string
+        default: v1.0.0
+      prerelease:
+        description: Mark the GitHub Release as pre-release
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  APP_DIR: Phone_App
+  NODE_VERSION: "22"
+  JAVA_VERSION: "17"
+
+jobs:
+  android-apk:
+    name: Build and publish APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: ${{ env.APP_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint --if-present
+
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --clean --non-interactive
+
+      - name: Build debug APK
+        run: cd android && ./gradlew assembleDebug --no-daemon
+
+      - name: Prepare release files
+        id: release_files
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+          else
+            RELEASE_TAG="${{ inputs.release_tag }}"
+          fi
+
+          APP_VERSION="$(node -p "require('./app.json').expo.version")"
+          APK_NAME="Phone_App-${RELEASE_TAG}-android-debug.apk"
+          APK_PATH="release/${APK_NAME}"
+          NOTES_PATH="release-notes.md"
+
+          mkdir -p release
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$APK_PATH"
+
+          {
+            echo "# Android APK ${RELEASE_TAG}"
+            echo
+            echo "- App version: ${APP_VERSION}"
+            echo "- Build type: debug APK"
+            echo "- Install this file manually on Android by allowing installation from unknown apps."
+            echo
+            echo "This APK is intended for testing outside Google Play."
+          } > "$NOTES_PATH"
+
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "apk_path=${APP_DIR}/${APK_PATH}" >> "$GITHUB_OUTPUT"
+          echo "notes_path=${APP_DIR}/${NOTES_PATH}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.release_files.outputs.apk_name }}
+          path: ${{ steps.release_files.outputs.apk_path }}
+
+      - name: Publish GitHub Release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release_files.outputs.tag }}
+          APK_PATH: ${{ steps.release_files.outputs.apk_path }}
+          NOTES_PATH: ${{ steps.release_files.outputs.notes_path }}
+          IS_PRERELEASE: ${{ inputs.prerelease || 'false' }}
+        run: |
+          PRERELEASE_ARG=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "$IS_PRERELEASE" = "true" ]; then
+            PRERELEASE_ARG="--prerelease"
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$APK_PATH" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$APK_PATH" \
+              --target "$GITHUB_SHA" \
+              --title "Android APK ${RELEASE_TAG}" \
+              --notes-file "$NOTES_PATH" \
+              $PRERELEASE_ARG
+          fi
