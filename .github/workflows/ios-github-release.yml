@@ -3,7 +3,6 @@ name: iOS IPA GitHub Release
 on:
   push:
     tags:
-      - "v*"
       - "ios-v*"
   workflow_dispatch:
     inputs:
@@ -47,6 +46,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Check Apple signing secrets
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          missing=0
+          for name in APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_TEAM_ID IOS_PROVISIONING_PROFILE_BASE64; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing GitHub secret: ${name}"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Add the missing secrets in GitHub Settings -> Secrets and variables -> Actions, then run this workflow again."
+            exit 1
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
@@ -76,18 +95,6 @@ jobs:
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
           IOS_PROVISIONING_PROFILE_NAME: ${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}
         run: |
-          missing=0
-          for name in APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_TEAM_ID IOS_PROVISIONING_PROFILE_BASE64; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing GitHub secret: ${name}"
-              missing=1
-            fi
-          done
-
-          if [ "$missing" -ne 0 ]; then
-            exit 1
-          fi
-
           CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
           PROFILE_PATH="$RUNNER_TEMP/build_profile.mobileprovision"
           PROFILE_PLIST="$RUNNER_TEMP/build_profile.plist"

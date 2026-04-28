@@ -47,7 +47,7 @@ base64 -i Profile.mobileprovision | pbcopy
 
 ## 4. Publish with a Tag
 
-After the GitHub secrets are configured, a normal version tag such as `v1.0.0` builds Android and iOS. For an iOS-only release, use an `ios-v*` tag from the repository root:
+After the GitHub secrets are configured, use an `ios-v*` tag from the repository root:
 
 ```bash
 git add .
@@ -62,6 +62,8 @@ The `iOS IPA GitHub Release` workflow builds the app on macOS and creates a GitH
 - `Phone_App-ios-v1.0.0-ios.ipa`
 - `Phone_App-ios-v1.0.0-ios-manifest.plist`
 - `Phone_App-ios-v1.0.0-ios-icon.png`
+
+If the workflow says `Missing GitHub secret`, one or more values from step 3 have not been added to GitHub yet.
 
 ## 5. Publish Manually
 

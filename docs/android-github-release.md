@@ -27,7 +27,23 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-The `Android APK GitHub Release` workflow builds the APK and creates a GitHub Release with `Phone_App-v1.0.0-android-debug.apk`.
+The `Android APK GitHub Release` workflow builds a standalone release APK and creates a GitHub Release with `Phone_App-v1.0.0-android-release.apk`.
+
+By default, the workflow creates a temporary Android signing key. This is enough to install the APK, but Android may reject updates from a later build because the signature can change.
+
+For smoother updates, add these optional GitHub secrets:
+
+- `ANDROID_KEYSTORE_BASE64`: base64 content of your Android `.keystore` file.
+- `ANDROID_KEYSTORE_PASSWORD`: keystore password.
+- `ANDROID_KEY_ALIAS`: key alias.
+- `ANDROID_KEY_PASSWORD`: key password.
+
+Generate a local test keystore if needed:
+
+```bash
+keytool -genkeypair -v -storetype JKS -keystore phone-app-release.keystore -storepass your-password -alias phone-app-release -keypass your-password -keyalg RSA -keysize 2048 -validity 10000
+base64 -w 0 phone-app-release.keystore
+```
 
 ## 3. Publish Manually
 
@@ -46,9 +62,15 @@ In GitHub:
 3. On Android, allow installation from the browser or file manager.
 4. Open the APK to install the app.
 
+## If the App Stays on the Splash Screen
+
+Install the `android-release.apk` file from the newest GitHub Release. Older `android-debug.apk` files are development builds and can stay blocked on the splash screen because they expect a Metro development server.
+
+If Android refuses to update the app, uninstall the old APK first and then install the new `android-release.apk`. To avoid this on future releases, configure the optional Android keystore secrets above and keep the same keystore.
+
 ## Important Limits
 
-- This is a debug-signed test APK, not a Play Store release.
+- This is a test APK signed for CI distribution, not a Play Store release.
 - Android may show a warning because the app does not come from Google Play.
 - If an update refuses to install, uninstall the old version and then install the new one.
 - For polished public distribution with stable updates, later sign a release APK with a private keystore or use Google Play.

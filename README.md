@@ -35,7 +35,7 @@ git push origin v1.0.0
 
 Then follow the guide: [docs/android-github-release.md](docs/android-github-release.md).
 
-After configuring Apple signing secrets, the same `v1.0.0` tag also starts the iOS workflow. To publish only an iOS IPA through GitHub Releases:
+After configuring Apple signing secrets, publish an iOS IPA through GitHub Releases:
 
 ```bash
 git tag ios-v1.0.0
@@ -47,8 +47,9 @@ Then follow the guide: [docs/ios-github-release.md](docs/ios-github-release.md).
 ## Recommended Strategy
 
 - Develop and test the app locally with Expo.
-- Push a Git tag such as `v1.0.0` to build Android and, after Apple signing is configured, iOS.
-- Download the generated APK and IPA from the GitHub Release.
+- Push a Git tag such as `v1.0.0` to build Android.
+- Push a Git tag such as `ios-v1.0.0` to build iOS.
+- Download the generated APK or IPA from the GitHub Release.
 - Use platform-specific tags such as `android-v1.0.0` or `ios-v1.0.0` when you only want one platform.
 
 Main guide: [docs/android-github-release.md](docs/android-github-release.md).

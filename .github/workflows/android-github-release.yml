@@ -61,11 +61,69 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Create Android signing credentials
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          KEYSTORE_PATH="android-release.keystore"
+          KEYSTORE_PASSWORD="${ANDROID_KEYSTORE_PASSWORD:-phone-app-ci-password}"
+          KEY_ALIAS="${ANDROID_KEY_ALIAS:-phone-app-ci-key}"
+          KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          else
+            keytool -genkeypair \
+              -v \
+              -storetype JKS \
+              -keystore "$KEYSTORE_PATH" \
+              -storepass "$KEYSTORE_PASSWORD" \
+              -alias "$KEY_ALIAS" \
+              -keypass "$KEY_PASSWORD" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Phone App, OU=CI, O=Phone App, L=Antananarivo, S=Antananarivo, C=MG"
+          fi
+
+          cat > credentials.json <<EOF
+          {
+            "android": {
+              "keystore": {
+                "keystorePath": "$KEYSTORE_PATH",
+                "keystorePassword": "$KEYSTORE_PASSWORD",
+                "keyAlias": "$KEY_ALIAS",
+                "keyPassword": "$KEY_PASSWORD"
+              }
+            }
+          }
+          EOF
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Build debug APK
-        run: cd android && ./gradlew assembleDebug --no-daemon
+      - name: Build standalone release APK
+        run: cd android && ./gradlew assembleRelease --no-daemon
+
+      - name: Check release APK contains JavaScript bundle
+        run: |
+          APK_PATH="android/app/build/outputs/apk/release/app-release.apk"
+
+          if [ ! -f "$APK_PATH" ]; then
+            echo "::error::Release APK was not created at ${APK_PATH}."
+            exit 1
+          fi
+
+          unzip -l "$APK_PATH" > /tmp/apk-files.txt
+
+          if ! grep -q "assets/index.android.bundle" /tmp/apk-files.txt; then
+            echo "::error::The release APK does not contain assets/index.android.bundle."
+            echo "::error::This APK would stay on the splash screen because it has no embedded JavaScript bundle."
+            exit 1
+          fi
 
       - name: Prepare release files
         id: release_files
@@ -77,21 +135,22 @@ jobs:
           fi
 
           APP_VERSION="$(node -p "require('./app.json').expo.version")"
-          APK_NAME="Phone_App-${RELEASE_TAG}-android-debug.apk"
+          APK_NAME="Phone_App-${RELEASE_TAG}-android-release.apk"
           APK_PATH="release/${APK_NAME}"
           NOTES_PATH="release-notes.md"
 
           mkdir -p release
-          cp android/app/build/outputs/apk/debug/app-debug.apk "$APK_PATH"
+          cp android/app/build/outputs/apk/release/app-release.apk "$APK_PATH"
 
           {
             echo "# Android APK ${RELEASE_TAG}"
             echo
             echo "- App version: ${APP_VERSION}"
-            echo "- Build type: debug APK"
+            echo "- Build type: standalone release APK"
             echo "- Install this file manually on Android by allowing installation from unknown apps."
             echo
-            echo "This APK is intended for testing outside Google Play."
+            echo "This APK includes the JavaScript bundle and is intended for testing outside Google Play."
+            echo "If no persistent Android keystore secrets are configured, uninstall the previous APK before installing this one."
           } > "$NOTES_PATH"
 
           echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
